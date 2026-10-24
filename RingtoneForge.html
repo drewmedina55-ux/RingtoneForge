@@ -1,12 +1,12 @@
 <!doctype html>
-<!-- Ringtone Forge v1.2 -->
+<!-- Ringtone Forge v1.3 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1012">
-<title>Ringtone Forge v1.2</title>
-<meta name="version" content="1.2">
+<title>Ringtone Forge v1.3</title>
+<meta name="version" content="1.3">
 <style>
 :root{--bg:#0f1012;--panel:#191b1f;--line:#2c3036;--text:#ece9e2;--mute:#8d9097;--accent:#ff6a3d;--sel:rgba(255,106,61,.18);--wave:#4f545c;--waveSel:#ffd2b8;--ok:#5fd18b;--err:#ff5a6a;color-scheme:dark}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -33,6 +33,13 @@ input[type=text]{font:inherit;width:100%;padding:14px;border-radius:12px;border:
 .hint{font-size:14px;color:var(--mute);margin:0}
 ol{margin:0;padding-left:20px;font-size:15px;color:var(--mute)} ol b{color:var(--text)}
 [hidden]{display:none!important}
+.zooms{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.zoom{display:flex;flex-direction:column;gap:4px;min-width:0}
+.zoom span{font:600 12px ui-monospace,Menlo,monospace;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.zoom span b{color:var(--text);text-transform:none;letter-spacing:0}
+.zoom canvas{height:84px;border:1px solid var(--line);cursor:ew-resize}
+.zoom.on canvas{border-color:var(--accent)}
+.btnrow{display:grid;grid-template-columns:2fr 1fr;gap:10px}
 .top{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:10px;row-gap:2px}
 .ver{font:600 13px ui-monospace,Menlo,monospace;color:var(--mute);letter-spacing:0}
 .ver a{color:var(--accent);text-decoration:none}
@@ -49,7 +56,7 @@ ol{margin:0;padding-left:20px;font-size:15px;color:var(--mute)} ol b{color:var(-
 </head>
 <body>
 <div class="wrap">
-  <header class="top"><h1>Ringtone <b>Forge</b></h1><small class="ver">v1.2 · by <a href="https://drewmedina.com" target="_blank" rel="noopener">Drew Medina</a> (Claude Opus)</small></header>
+  <header class="top"><h1>Ringtone <b>Forge</b></h1><small class="ver">v1.3 · by <a href="https://drewmedina.com" target="_blank" rel="noopener">Drew Medina</a> (Claude Opus)</small></header>
 
   <section class="howto" aria-label="How it works">
     <h2>How it works</h2>
@@ -77,12 +84,16 @@ ol{margin:0;padding-left:20px;font-size:15px;color:var(--mute)} ol b{color:var(-
   <section class="step" id="trimStep" hidden>
     <h2>2 · Pick the part you want</h2>
     <canvas id="wave"></canvas>
+    <div class="zooms">
+      <div class="zoom" id="zAbox"><span>Start <b id="zAt"></b></span><canvas id="zA"></canvas></div>
+      <div class="zoom" id="zBbox"><span>End <b id="zBt"></b></span><canvas id="zB"></canvas></div>
+    </div>
     <div class="info"><span id="selTxt"></span><span id="lenTxt"></span></div>
-    <p class="hint">Drag the orange edges, or drag the middle to slide. Max 30 seconds.</p>
+    <p class="hint">Drag the orange edges, or drag the middle to slide. For fine-tuning, drag inside the Start and End close-ups. Max 30 seconds.</p>
     <label class="vol" for="volIn"><span>Volume</span><input type="range" id="volIn" min="20" max="150" step="5" value="100"><b id="volTxt">100%</b></label>
     <p class="hint" id="volHint">100% = as loud as possible without distortion. Above 100% pushes it louder and squashes the peaks.</p>
-    <button id="playBtn">▶ Preview</button>
-    <audio id="pv" preload="auto" playsinline></audio>
+    <div class="btnrow"><button id="playBtn">▶ Preview</button><button id="resetBtn">↺ Reset</button></div>
+    <audio id="pv" preload="auto" playsinline loop></audio>
   </section>
 
   <section class="step" id="saveStep" hidden>
@@ -317,6 +328,28 @@ function setAudio(buf,name){
   draw(); schedulePreview(); $('trimStep').scrollIntoView({behavior:'smooth',block:'start'});
 }
 const cv=$('wave');
+const ZW=3; // seconds shown in each close-up
+function zoomWin(t){ const span=Math.min(ZW,S.dur); let a=t-span/2; a=Math.max(0,Math.min(S.dur-span,a)); return [a,a+span]; }
+function drawZoom(cvz,t,which){
+  const r=cvz.getBoundingClientRect(), d=devicePixelRatio||1; cvz.width=Math.max(1,r.width*d); cvz.height=Math.max(1,r.height*d);
+  const g=cvz.getContext('2d'), W=cvz.width, H=cvz.height, [v0,v1]=zoomWin(t), span=v1-v0, X=x=>(x-v0)/span*W, [a,b]=S.sel;
+  g.fillStyle='#121316'; g.fillRect(0,0,W,H);
+  g.fillStyle='rgba(255,106,61,.18)'; const xa=Math.max(0,X(a)), xb=Math.min(W,X(b)); if(xb>xa) g.fillRect(xa,0,xb-xa,H);
+  const sr=S.buf.sampleRate, L=S.buf.getChannelData(0), R=S.buf.numberOfChannels>1?S.buf.getChannelData(1):L, norm=S.peaks.norm, amp=H/2-4*d;
+  for(let x=0;x<W;x++){
+    const t0=v0+x/W*span, i0=Math.floor(t0*sr), i1=Math.max(i0+1,Math.floor((v0+(x+1)/W*span)*sr)); let lo=0,hi=0;
+    for(let i=i0;i<i1&&i<L.length;i++){ const v=(L[i]+R[i])*0.5; if(v<lo)lo=v; if(v>hi)hi=v; }
+    g.fillStyle=(t0>=a&&t0<=b)?'#ffd2b8':'#4f545c'; g.fillRect(x,H/2-hi/norm*amp,1,Math.max(1,(hi-lo)/norm*amp));
+  }
+  g.fillStyle='rgba(255,255,255,.06)'; for(let s=Math.ceil(v0*2)/2;s<v1;s+=0.5) g.fillRect(X(s),0,1,H);
+  g.fillStyle='#ff6a3d'; const xe=X(which==='a'?a:b); g.fillRect(xe-1.5*d,0,3*d,H);
+  if(playing){ const p=playPos(); if(p>=v0&&p<=v1){ g.fillStyle='#fff'; g.fillRect(X(p)-d/2,0,d,H); } }
+}
+function drawZooms(){
+  drawZoom($('zA'),S.sel[0],'a'); drawZoom($('zB'),S.sel[1],'b');
+  $('zAt').textContent=fmt(S.sel[0]); $('zBt').textContent=fmt(S.sel[1]);
+  $('zAbox').classList.toggle('on',!!drag&&drag.m==='a'); $('zBbox').classList.toggle('on',!!drag&&drag.m==='b');
+}
 function draw(){
   if(!S.buf) return;
   const r=cv.getBoundingClientRect(), d=devicePixelRatio||1; cv.width=r.width*d; cv.height=r.height*d;
@@ -328,6 +361,7 @@ function draw(){
   g.fillStyle='#ff6a3d';
   for(const x of [X(a),X(b)]){ g.fillRect(x-1.5*d,0,3*d,H); g.beginPath(); g.arc(x,H/2,11*d,0,7); g.fill(); }
   if(playing){ g.fillStyle='#fff'; g.fillRect(X(playPos())-d/2,0,d,H); }
+  drawZooms();
   $('selTxt').innerHTML=`<b>${fmt(a)}</b> → <b>${fmt(b)}</b>`; $('lenTxt').innerHTML=`<b>${(b-a).toFixed(1)}</b> s`;
 }
 addEventListener('resize',draw);
@@ -341,7 +375,15 @@ cv.addEventListener('pointerdown',e=>{
   move(t);
 });
 cv.addEventListener('pointermove',e=>drag&&move(tAt(e)));
-cv.addEventListener('pointerup',()=>{drag=null; schedulePreview();}); cv.addEventListener('pointercancel',()=>drag=null);
+cv.addEventListener('pointerup',()=>{drag=null; draw(); schedulePreview();}); cv.addEventListener('pointercancel',()=>drag=null);
+for(const [id,m] of [['zA','a'],['zB','b']]){
+  const z=$(id);
+  z.addEventListener('pointerdown',e=>{ if(!S.buf) return; z.setPointerCapture(e.pointerId); stopPlay(); drag={m,fine:true,x0:e.clientX,t0:S.sel[m==='a'?0:1]}; draw(); });
+  z.addEventListener('pointermove',e=>{ if(!drag||!drag.fine) return; const span=Math.min(ZW,S.dur), w=z.getBoundingClientRect().width; move(drag.t0+(e.clientX-drag.x0)/w*span); });
+  const end=()=>{ if(drag&&drag.fine){ drag=null; draw(); schedulePreview(); } };
+  z.addEventListener('pointerup',end); z.addEventListener('pointercancel',end);
+}
+$('resetBtn').onclick=()=>{ if(!S.buf) return; stopPlay(); S.sel=[0,Math.min(MAX,S.dur)]; draw(); schedulePreview(); };
 function move(t){
   let [a,b]=S.sel;
   if(drag.m==='a'){a=Math.min(t,b-0.5); if(b-a>MAX) b=a+MAX;}
@@ -377,7 +419,7 @@ async function preparePreview(){
 const schedulePreview=()=>{ clearTimeout(pvTimer); pvTimer=setTimeout(()=>preparePreview().catch(console.error),250); };
 const playPos=()=>S.sel[0]+(pv.currentTime||0);
 function stopPlay(){ if(playing){ pv.pause(); playing=false; } cancelAnimationFrame(praf); $('playBtn').textContent='▶ Preview'; draw(); }
-pv.onended=()=>stopPlay();
+pv.loop=true; pv.onended=()=>stopPlay();
 $('playBtn').onclick=async()=>{
   if(playing) return stopPlay();
   session('playback');
