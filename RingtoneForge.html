@@ -33,7 +33,10 @@ input[type=text]{font:inherit;width:100%;padding:14px;border-radius:12px;border:
 .hint{font-size:14px;color:var(--mute);margin:0}
 ol{margin:0;padding-left:20px;font-size:15px;color:var(--mute)} ol b{color:var(--text)}
 [hidden]{display:none!important}
-.ver{font:600 13px ui-monospace,Menlo,monospace;color:var(--mute);vertical-align:middle;letter-spacing:0}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:10px;row-gap:2px}
+.ver{font:600 13px ui-monospace,Menlo,monospace;color:var(--mute);letter-spacing:0}
+.ver a{color:var(--accent);text-decoration:none}
+.ver a:hover,.ver a:focus-visible{text-decoration:underline}
 .vol{display:flex;align-items:center;gap:12px;font-weight:700}
 .vol input{flex:1;accent-color:var(--accent);height:32px}
 .vol b{font:700 15px ui-monospace,Menlo,monospace;min-width:48px;text-align:right}
@@ -41,7 +44,7 @@ ol{margin:0;padding-left:20px;font-size:15px;color:var(--mute)} ol b{color:var(-
 </head>
 <body>
 <div class="wrap">
-  <h1>Ringtone <b>Forge</b> <small class="ver">v1.2</small></h1>
+  <header class="top"><h1>Ringtone <b>Forge</b></h1><small class="ver">v1.2 · by <a href="https://drewmedina.com" target="_blank" rel="noopener">Drew Medina</a> (Claude Opus)</small></header>
 
   <section class="step">
     <h2>1 · Get the sound</h2>
