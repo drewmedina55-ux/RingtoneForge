@@ -36,6 +36,11 @@ ol{margin:0;padding-left:20px;font-size:15px;color:var(--mute)} ol b{color:var(-
 .top{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:10px;row-gap:2px}
 .ver{font:600 13px ui-monospace,Menlo,monospace;color:var(--mute);letter-spacing:0}
 .ver a{color:var(--accent);text-decoration:none}
+.howto{padding:2px 4px}
+.howto h2{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute)}
+.howto ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:4px;font-size:16px;color:var(--text)}
+.howto b{color:var(--accent)}
+.howto .req{color:var(--mute);font-size:14px}
 .ver a:hover,.ver a:focus-visible{text-decoration:underline}
 .vol{display:flex;align-items:center;gap:12px;font-weight:700}
 .vol input{flex:1;accent-color:var(--accent);height:32px}
@@ -45,6 +50,15 @@ ol{margin:0;padding-left:20px;font-size:15px;color:var(--mute)} ol b{color:var(-
 <body>
 <div class="wrap">
   <header class="top"><h1>Ringtone <b>Forge</b></h1><small class="ver">v1.2 · by <a href="https://drewmedina.com" target="_blank" rel="noopener">Drew Medina</a> (Claude Opus)</small></header>
+
+  <section class="howto" aria-label="How it works">
+    <h2>How it works</h2>
+    <ol>
+      <li><b>Record</b> a sound, or <b>upload</b> a video, such as a screen recording.</li>
+      <li><b>Select</b> the part you want.</li>
+      <li><b>Export</b> it and save it as a ringtone <span class="req">(requires iOS 26)</span>.</li>
+    </ol>
+  </section>
 
   <section class="step">
     <h2>1 · Get the sound</h2>
