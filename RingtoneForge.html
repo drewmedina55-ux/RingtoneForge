@@ -1,11 +1,13 @@
 <!doctype html>
+<!-- Ringtone Forge v1.1 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f1012">
-<title>Ringtone Forge</title>
+<title>Ringtone Forge v1.1</title>
+<meta name="version" content="1.1">
 <style>
 :root{--bg:#0f1012;--panel:#191b1f;--line:#2c3036;--text:#ece9e2;--mute:#8d9097;--accent:#ff6a3d;--sel:rgba(255,106,61,.18);--wave:#4f545c;--waveSel:#ffd2b8;--ok:#5fd18b;--err:#ff5a6a;color-scheme:dark}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -32,11 +34,15 @@ input[type=text]{font:inherit;width:100%;padding:14px;border-radius:12px;border:
 .hint{font-size:14px;color:var(--mute);margin:0}
 ol{margin:0;padding-left:20px;font-size:15px;color:var(--mute)} ol b{color:var(--text)}
 [hidden]{display:none!important}
+.ver{font:600 13px ui-monospace,Menlo,monospace;color:var(--mute);vertical-align:middle;letter-spacing:0}
+.vol{display:flex;align-items:center;gap:12px;font-weight:700}
+.vol input{flex:1;accent-color:var(--accent);height:32px}
+.vol b{font:700 15px ui-monospace,Menlo,monospace;min-width:48px;text-align:right}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Ringtone <b>Forge</b></h1>
+  <h1>Ringtone <b>Forge</b> <small class="ver">v1.1</small></h1>
 
   <section class="step">
     <h2>1 · Get the sound</h2>
@@ -57,19 +63,20 @@ ol{margin:0;padding-left:20px;font-size:15px;color:var(--mute)} ol b{color:var(-
     <canvas id="wave"></canvas>
     <div class="info"><span id="selTxt"></span><span id="lenTxt"></span></div>
     <p class="hint">Drag the orange edges, or drag the middle to slide. Max 30 seconds.</p>
+    <label class="vol" for="volIn"><span>Volume</span><input type="range" id="volIn" min="20" max="150" step="5" value="100"><b id="volTxt">100%</b></label>
+    <p class="hint" id="volHint">100% = as loud as possible without distortion. Above 100% pushes it louder and squashes the peaks.</p>
     <button id="playBtn">▶ Preview</button>
+    <audio id="pv" preload="auto" playsinline></audio>
   </section>
 
   <section class="step" id="saveStep" hidden>
     <h2>3 · Save</h2>
     <input type="text" id="nameIn" value="My Ringtone" maxlength="40" autocomplete="off">
-    <button class="go" id="saveBtn">Save for GarageBand</button>
+    <button class="go" id="saveBtn">Save ringtone</button>
     <div class="msg" id="saveMsg"></div>
     <ol>
-      <li>Choose <b>Save to Files</b>.</li>
-      <li>In GarageBand, start an <b>Audio Recorder</b> song and switch to the tracks view. Tap <b>+</b> (top right) → <b>Section A</b> → turn on <b>Automatic</b> so the clip isn't cut short.</li>
-      <li>Tap the <b>loop icon</b> → <b>Files</b> → <b>Browse</b>, pick the file and drag it onto the track.</li>
-      <li><b>My Songs</b> → press and hold the song → <b>Share → Ringtone</b>.</li>
+      <li>In the share sheet that opens, tap <b>Use as Ringtone</b>.</li>
+      <li>If it isn't listed, tap <b>Save to Files</b>, open the file in the Files app, then tap <b>Share → Use as Ringtone</b>.</li>
     </ol>
   </section>
 </div>
@@ -224,12 +231,13 @@ let ctx=null; const ac=()=>(ctx||=new (window.AudioContext||window.webkitAudioCo
 const S={buf:null,peaks:null,sel:[0,0],dur:0,name:'My Ringtone'};
 const fmt=t=>{t=Math.max(0,t);const m=Math.floor(t/60);return m+':'+(t-m*60).toFixed(1).padStart(4,'0')};
 const msg=(el,t,c='')=>{$(el).textContent=t;$(el).className='msg '+c};
+const session=t=>{try{ if(navigator.audioSession) navigator.audioSession.type=t; }catch{}};
 
 /* ---- record ---- */
 let rec=null,stream=null,timer=0,raf=0,chunks=[],t0=0,srcNode=null;
 $('recBtn').onclick=async()=>{
   if(rec&&rec.state==='recording'){rec.stop();return;}
-  msg('srcMsg','');
+  msg('srcMsg',''); stopPlay(); session('play-and-record');
   try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});}
   catch(e){msg('srcMsg','Microphone blocked. Allow it in your browser settings, or use “Choose video / audio”.','err');return;}
   const a=ac(); await a.resume();
@@ -239,7 +247,7 @@ $('recBtn').onclick=async()=>{
   rec=new MediaRecorder(stream,mime?{mimeType:mime}:{}); chunks=[];
   rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
   rec.onstop=async()=>{
-    cancelAnimationFrame(raf);clearInterval(timer);stream.getTracks().forEach(t=>t.stop());srcNode.disconnect();
+    cancelAnimationFrame(raf);clearInterval(timer);stream.getTracks().forEach(t=>t.stop());srcNode.disconnect(); session('playback'); try{ctx.suspend()}catch{}
     $('recBtn').textContent='● Record again';$('recBtn').classList.remove('recording');$('recUI').hidden=true;
     try{ setAudio(await ac().decodeAudioData(await new Blob(chunks,{type:rec.mimeType}).arrayBuffer()),'Recording'); }
     catch(e){ msg('srcMsg','Could not read the recording: '+e.message,'err'); }
@@ -276,15 +284,21 @@ async function decodeFile(f){
 }
 
 /* ---- trim UI ---- */
+function toStereo(buf){
+  const n=buf.numberOfChannels; if(n<=2) return buf;
+  const out=ac().createBuffer(2,buf.length,buf.sampleRate), L=out.getChannelData(0), R=out.getChannelData(1);
+  for(let c=0;c<n;c++){ const d=buf.getChannelData(c), dst=c%2?R:L, k=1/Math.ceil(n/2); for(let i=0;i<d.length;i++) dst[i]+=d[i]*k; }
+  return out;
+}
 function setAudio(buf,name){
-  stopPlay(); S.buf=buf; S.dur=buf.duration; S.sel=[0,Math.min(MAX,buf.duration)];
+  buf=toStereo(buf); stopPlay(); S.buf=buf; S.dur=buf.duration; S.sel=[0,Math.min(MAX,buf.duration)];
   $('nameIn').value=name.slice(0,40)||'My Ringtone';
   const n=buf.length, cols=1200, step=Math.max(1,Math.floor(n/cols)), mx=new Float32Array(Math.ceil(n/step));
   const chs=[...Array(buf.numberOfChannels)].map((_,i)=>buf.getChannelData(i));
   for(let i=0;i<mx.length;i++){let p=0;const e=Math.min(n,(i+1)*step);for(const c of chs)for(let j=i*step;j<e;j+=4){const v=Math.abs(c[j]);if(v>p)p=v;}mx[i]=p;}
   let peak=0; for(const v of mx) peak=Math.max(peak,v); S.peaks={mx,norm:peak||1};
   $('trimStep').hidden=false; $('saveStep').hidden=false; msg('saveMsg','');
-  draw(); $('trimStep').scrollIntoView({behavior:'smooth',block:'start'});
+  draw(); schedulePreview(); $('trimStep').scrollIntoView({behavior:'smooth',block:'start'});
 }
 const cv=$('wave');
 function draw(){
@@ -311,7 +325,7 @@ cv.addEventListener('pointerdown',e=>{
   move(t);
 });
 cv.addEventListener('pointermove',e=>drag&&move(tAt(e)));
-cv.addEventListener('pointerup',()=>drag=null); cv.addEventListener('pointercancel',()=>drag=null);
+cv.addEventListener('pointerup',()=>{drag=null; schedulePreview();}); cv.addEventListener('pointercancel',()=>drag=null);
 function move(t){
   let [a,b]=S.sel;
   if(drag.m==='a'){a=Math.min(t,b-0.5); if(b-a>MAX) b=a+MAX;}
@@ -326,24 +340,40 @@ async function render(){
   const s=oc.createBufferSource(); s.buffer=S.buf;
   let peak=0; const i0=Math.floor(a*S.buf.sampleRate), i1=Math.floor(b*S.buf.sampleRate);
   for(let c=0;c<S.buf.numberOfChannels;c++){const d=S.buf.getChannelData(c);for(let i=i0;i<i1;i++){const v=Math.abs(d[i]);if(v>peak)peak=v;}}
-  const g=oc.createGain(); g.gain.value=peak?0.89/peak:1;
+  const vol=+$('volIn').value/100, g=oc.createGain(); g.gain.value=(peak?0.89/peak:1)*vol;
   const env=oc.createGain(), fi=Math.min(0.3,L/4), fo=Math.min(1,L/4);
   env.gain.setValueAtTime(0,0); env.gain.linearRampToValueAtTime(1,fi); env.gain.setValueAtTime(1,L-fo); env.gain.linearRampToValueAtTime(0,L);
-  s.connect(g).connect(env).connect(oc.destination); s.start(0,a,L);
+  let chain=s.connect(g);
+  if(vol>1){ const ws=oc.createWaveShaper(), n=2048, c=new Float32Array(n); for(let i=0;i<n;i++){const x=i/(n-1)*2-1; c[i]=Math.tanh(x*1.6)/Math.tanh(1.6)*0.97;} ws.curve=c; ws.oversample='2x'; chain=chain.connect(ws); }
+  chain.connect(env).connect(oc.destination); s.start(0,a,L);
   return oc.startRendering();
 }
 
-/* ---- preview ---- */
-let playing=null,pt0=0,praf=0;
-const playPos=()=>playing?S.sel[0]+Math.min(ctx.currentTime-pt0,S.sel[1]-S.sel[0]):0;
-function stopPlay(){ if(playing){try{playing.stop()}catch{} playing=null;} cancelAnimationFrame(praf); $('playBtn').textContent='▶ Preview'; draw(); }
+/* ---- preview: pre-rendered WAV in an <audio> element (survives iOS audio-session glitches and the silent switch) ---- */
+const pv=$('pv'); let playing=false, praf=0, pvURL=null, pvKey='', pvJob=null, pvTimer=0;
+const keyNow=()=>S.sel.map(v=>v.toFixed(3)).join()+'|'+$('volIn').value;
+async function preparePreview(){
+  const k=keyNow(); if(k===pvKey&&pvURL) return;
+  const job=(async()=>{ const buf=await render(); if(keyNow()!==k) return; if(pvURL) URL.revokeObjectURL(pvURL);
+    pvURL=URL.createObjectURL(new Blob([toWav(buf)],{type:'audio/wav'})); pvKey=k; pv.src=pvURL; pv.load(); })();
+  pvJob=job; await job;
+}
+const schedulePreview=()=>{ clearTimeout(pvTimer); pvTimer=setTimeout(()=>preparePreview().catch(console.error),250); };
+const playPos=()=>S.sel[0]+(pv.currentTime||0);
+function stopPlay(){ if(playing){ pv.pause(); playing=false; } cancelAnimationFrame(praf); $('playBtn').textContent='▶ Preview'; draw(); }
+pv.onended=()=>stopPlay();
 $('playBtn').onclick=async()=>{
   if(playing) return stopPlay();
-  const a=ac(); await a.resume(); const buf=await render();
-  const s=a.createBufferSource(); s.buffer=buf; s.connect(a.destination); s.start(); pt0=a.currentTime; playing=s;
-  s.onended=()=>{ if(playing===s) stopPlay(); };
-  $('playBtn').textContent='■ Stop'; const tick=()=>{ if(!playing) return; draw(); praf=requestAnimationFrame(tick); }; tick();
+  session('playback');
+  if(keyNow()!==pvKey||!pvURL){ $('playBtn').textContent='…'; try{ await preparePreview(); }catch(e){ msg('saveMsg','Preview failed: '+e.message,'err'); $('playBtn').textContent='▶ Preview'; return; } }
+  pv.currentTime=0;
+  try{ await pv.play(); }catch(e){ $('playBtn').textContent='▶ Preview'; msg('saveMsg','Tap Preview again to play.'); return; }
+  playing=true; $('playBtn').textContent='■ Stop';
+  const tick=()=>{ if(!playing) return; draw(); praf=requestAnimationFrame(tick); }; tick();
 };
+const volChange=()=>{ $('volTxt').textContent=$('volIn').value+'%'; stopPlay(); schedulePreview(); };
+$('volIn').addEventListener('input',volChange);
+document.addEventListener('visibilitychange',()=>{ if(document.hidden) stopPlay(); });
 
 /* ---- encode to 16-bit WAV (GarageBand always accepts it) ---- */
 function toWav(buf){
@@ -361,11 +391,11 @@ $('saveBtn').onclick=async()=>{
     const name=($('nameIn').value.trim()||'My Ringtone').replace(/[\\/:*?"<>|]+/g,'_')+'.wav';
     const file=new File([bytes],name,{type:'audio/wav'});
     if(navigator.canShare&&navigator.canShare({files:[file]})){
-      try{ await navigator.share({files:[file]}); msg('saveMsg','✓ '+name+' ready. Now open GarageBand.','ok'); return; }
+      try{ await navigator.share({files:[file]}); msg('saveMsg','✓ '+name+' ready.','ok'); return; }
       catch(e){ if(e.name==='AbortError'){ msg('saveMsg','Cancelled. Tap Save again when ready.'); return; } }
     }
     const u=URL.createObjectURL(file), a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),5000);
-    msg('saveMsg','✓ Saved '+name+' to Downloads (Files app). Now open GarageBand.','ok');
+    msg('saveMsg','✓ Saved '+name+' to Downloads. Open it in the Files app → Share → Use as Ringtone.','ok');
   }catch(e){ console.error(e); msg('saveMsg','Save failed: '+(e.message||e),'err'); }
   finally{ btn.disabled=false; }
 };
